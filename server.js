@@ -1,8 +1,7 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
-require("dotenv").config();
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,8 +15,8 @@ const io = new Server(server, {
   cors: {
     origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
     methods: ["GET", "POST"],
-    credentials: true,
-  },
+    credentials: true
+  }
 });
 
 // Store online users: Map<userId, socketId[]>
@@ -26,7 +25,7 @@ const onlineUsers = new Map();
 // Middleware for authentication
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
-
+  
   if (!token) {
     return next(new Error("Authentication error: Token required"));
   }
@@ -44,19 +43,19 @@ io.use((socket, next) => {
   // WARNING: This is for demonstration purposes.
   try {
     // Attempt to decode payload if it's a real JWT
-    const parts = token.split(".");
+    const parts = token.split('.');
     if (parts.length === 3) {
-      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
       socket.userId = payload.sub || payload.id || payload.userId;
     } else {
-      // Fallback: assume token IS the userId for testing
-      socket.userId = token;
+        // Fallback: assume token IS the userId for testing
+        socket.userId = token;
     }
-
+    
     if (!socket.userId) {
-      return next(new Error("Authentication error: Invalid user ID"));
+        return next(new Error("Authentication error: Invalid user ID"));
     }
-
+    
     next();
   } catch (e) {
     console.error("Token parsing error:", e);
@@ -64,7 +63,7 @@ io.use((socket, next) => {
   }
 });
 
-io.on("connection", (socket) => {
+io.on('connection', (socket) => {
   const userId = socket.userId;
   console.log(`✅ User connected: ${userId} (Socket ID: ${socket.id})`);
 
@@ -78,19 +77,19 @@ io.on("connection", (socket) => {
   onlineUsers.get(userId).add(socket.id);
 
   // Broadcast user online status
-  io.emit("user:online", { userId });
+  io.emit('user:online', { userId });
 
   // --- Event Handlers ---
 
   // Handle Client-Sent Messages (Direct Relay)
   // This allows the frontend to emit 'message:send' and have it relayed to the recipient
   // without going through the Next.js API if desired, OR for simple signaling.
-  socket.on("message:send", (data) => {
+  socket.on('message:send', (data) => {
     const { receiverId, content, id } = data;
     console.log(`📩 Message from ${userId} to ${receiverId}: ${content}`);
 
     // Emit to receiver
-    io.to(`user:${receiverId}`).emit("message:new", {
+    io.to(`user:${receiverId}`).emit('message:new', {
       id: id || Date.now().toString(),
       content,
       senderId: userId,
@@ -98,40 +97,45 @@ io.on("connection", (socket) => {
       createdAt: new Date().toISOString(),
       isRead: false,
       sender: {
-        id: userId,
-        // In a real app, we'd fetch full user details or expect them in the payload
-        firstName: "User",
-        lastName: userId,
-        role: "UNKNOWN",
-        avatarUrl: null,
-        image: null,
-      },
+          id: userId,
+          // In a real app, we'd fetch full user details or expect them in the payload
+          firstName: "User", 
+          lastName: userId,
+          role: "UNKNOWN",
+          avatarUrl: null,
+          image: null
+      }
     });
 
     // Ack to sender (optional, if they are listening for confirmation)
-    socket.emit("message:sent", { id });
+    socket.emit('message:sent', { id });
+  });
+  
+  socket.on('message:read', (data) => {
+    const { messageId, senderId } = data;
+    console.log(`👁️ Message ${messageId} read by ${userId}`);
+    
+    // Relay 'read' status back to the original sender
+    io.to(`user:${senderId}`).emit('message:read_relay', { messageId, readerId: userId });
   });
 
-  socket.on("typing:start", ({ receiverId }) => {
-    io.to(`user:${receiverId}`).emit("user:typing", { userId, isTyping: true });
+  socket.on('typing:start', ({ receiverId }) => {
+    io.to(`user:${receiverId}`).emit('user:typing', { userId, isTyping: true });
   });
 
-  socket.on("typing:stop", ({ receiverId }) => {
-    io.to(`user:${receiverId}`).emit("user:typing", {
-      userId,
-      isTyping: false,
-    });
+  socket.on('typing:stop', ({ receiverId }) => {
+    io.to(`user:${receiverId}`).emit('user:typing', { userId, isTyping: false });
   });
 
-  socket.on("disconnect", () => {
+  socket.on('disconnect', () => {
     console.log(`❌ User disconnected: ${userId}`);
-
+    
     const userSockets = onlineUsers.get(userId);
     if (userSockets) {
       userSockets.delete(socket.id);
       if (userSockets.size === 0) {
         onlineUsers.delete(userId);
-        io.emit("user:offline", { userId });
+        io.emit('user:offline', { userId });
       }
     }
   });
@@ -139,7 +143,7 @@ io.on("connection", (socket) => {
 
 // --- REST API for Server-to-Server Broadcasting ---
 // This allows the Next.js API routes to trigger socket events securely
-app.post("/api/broadcast", (req, res) => {
+app.post('/api/broadcast', (req, res) => {
   // TODO: Add secret key check header to prevent unauthorized calls
   // const secret = req.headers['x-internal-secret'];
   // if (secret !== process.env.INTERNAL_SECRET) return res.sendStatus(403);
